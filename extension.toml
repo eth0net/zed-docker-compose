@@ -1,0 +1,11 @@
+id = "docker-compose"
+name = "Docker Compose"
+version = "0.1.0"
+schema_version = 1
+authors = ["eth0net <eth0net@pm.me>"]
+description = "Syntax highlighting for Docker Compose files"
+repository = "https://github.com/eth0net/zed-docker-compose"
+
+[language_servers.docker-compose]
+name = "Docker Compose Language Server"
+language = "YAML"
