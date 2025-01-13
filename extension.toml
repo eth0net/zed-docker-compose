@@ -8,4 +8,4 @@ repository = "https://github.com/eth0net/zed-docker-compose"
 
 [language_servers.docker-compose]
 name = "Docker Compose Language Server"
-language = "YAML"
+language = "Docker Compose"
