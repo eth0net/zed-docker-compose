@@ -1,6 +1,6 @@
 id = "docker-compose"
 name = "Docker Compose"
-version = "0.1.0"
+version = "0.2.0"
 schema_version = 1
 authors = ["eth0net <eth0net@pm.me>"]
 description = "Syntax highlighting for Docker Compose files"
