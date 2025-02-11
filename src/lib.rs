@@ -1,6 +1,7 @@
 use zed_extension_api as zed;
 
-const SERVER_PATH: &str = "node_modules/.bin/docker-compose-langserver";
+const SERVER_PATH: &str =
+    "node_modules/@microsoft/compose-language-service/bin/docker-compose-langserver";
 const PACKAGE_NAME: &str = "@microsoft/compose-language-service";
 
 #[derive(Default)]
