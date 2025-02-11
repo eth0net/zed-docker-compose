@@ -305,7 +305,7 @@ dependencies = [
 
 [[package]]
 name = "zed-docker-compose"
-version = "0.1.0"
+version = "0.3.1"
 dependencies = [
  "zed_extension_api",
 ]
