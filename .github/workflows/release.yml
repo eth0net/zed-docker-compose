@@ -3,6 +3,13 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  # Lets an existing tag be published by hand, for when the push trigger
+  # doesn't fire or the run needs repeating.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Git tag to publish, e.g. v0.4.0
+        required: true
 
 jobs:
   release:
@@ -13,5 +20,7 @@ jobs:
         with:
           extension-name: docker-compose
           push-to: eth0net/zed-extensions
+          # Empty on tag pushes, where the action falls back to the pushed tag.
+          tag: ${{ inputs.tag }}
         env:
           COMMITTER_TOKEN: ${{ secrets.EXTENSIONS_TOKEN }}
