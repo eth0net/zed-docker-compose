@@ -1,25 +1,29 @@
-use zed_extension_api as zed;
+use std::fs;
 
-const SERVER_PATH: &str =
-    "node_modules/@microsoft/compose-language-service/bin/docker-compose-langserver";
-const PACKAGE_NAME: &str = "@microsoft/compose-language-service";
+use zed_extension_api::{self as zed, serde_json, LanguageServerId, Result};
+
+const SERVER_REPO: &str = "docker/docker-language-server";
+const BINARY_NAME: &str = "docker-language-server";
 
 #[derive(Default)]
 struct DockerComposeExtension {
-    cached: bool,
+    cached_binary_path: Option<String>,
 }
 
 impl DockerComposeExtension {
-    fn server_path(&self) -> String {
-        zed_ext::sanitize_windows_path(std::env::current_dir().unwrap())
-            .join(SERVER_PATH)
-            .to_string_lossy()
-            .to_string()
-    }
+    fn language_server_binary_path(
+        &mut self,
+        language_server_id: &LanguageServerId,
+        worktree: &zed::Worktree,
+    ) -> Result<String> {
+        if let Some(path) = worktree.which(BINARY_NAME) {
+            return Ok(path);
+        }
 
-    fn install_if_needed(&mut self, language_server_id: &zed::LanguageServerId) -> zed::Result<()> {
-        if self.cached {
-            return Ok(());
+        if let Some(path) = &self.cached_binary_path {
+            if fs::metadata(path).is_ok_and(|stat| stat.is_file()) {
+                return Ok(path.clone());
+            }
         }
 
         zed::set_language_server_installation_status(
@@ -27,40 +31,76 @@ impl DockerComposeExtension {
             &zed::LanguageServerInstallationStatus::CheckingForUpdate,
         );
 
-        let latest = zed::npm_package_latest_version(PACKAGE_NAME)?;
-        let current = zed::npm_package_installed_version(PACKAGE_NAME)?;
+        let release = zed::latest_github_release(
+            SERVER_REPO,
+            zed::GithubReleaseOptions {
+                require_assets: true,
+                pre_release: false,
+            },
+        )?;
 
-        if current.is_some_and(|current| current == latest) {
-            zed::set_language_server_installation_status(
-                language_server_id,
-                &zed::LanguageServerInstallationStatus::None,
-            );
+        let (os, arch) = zed::current_platform();
 
-            return Ok(());
-        }
-
-        zed::set_language_server_installation_status(
-            language_server_id,
-            &zed::LanguageServerInstallationStatus::Downloading,
+        let asset_prefix = format!(
+            "{BINARY_NAME}-{os}-{arch}-",
+            os = match os {
+                zed::Os::Mac => "darwin",
+                zed::Os::Linux => "linux",
+                zed::Os::Windows => "windows",
+            },
+            arch = match arch {
+                zed::Architecture::Aarch64 => "arm64",
+                zed::Architecture::X8664 => "amd64",
+                zed::Architecture::X86 => return Err("unsupported architecture: x86".into()),
+            },
         );
 
-        if let Err(err) = zed::npm_install_package(PACKAGE_NAME, &latest) {
+        // Match on the platform prefix rather than rebuilding the whole asset
+        // name, which ends in the release version in a form we'd have to guess.
+        let asset = release
+            .assets
+            .iter()
+            .find(|asset| asset.name.starts_with(&asset_prefix))
+            .ok_or_else(|| {
+                format!(
+                    "no asset matching {asset_prefix}* in {SERVER_REPO} {}",
+                    release.version
+                )
+            })?;
+
+        // Windows needs the .exe suffix to execute the binary at all, so the
+        // version lives in the file name rather than a containing directory.
+        let extension = match os {
+            zed::Os::Windows => ".exe",
+            _ => "",
+        };
+        let binary_path = format!("{BINARY_NAME}-{}{extension}", release.version);
+
+        if !fs::metadata(&binary_path).is_ok_and(|stat| stat.is_file()) {
             zed::set_language_server_installation_status(
                 language_server_id,
-                &zed::LanguageServerInstallationStatus::Failed(err.clone()),
+                &zed::LanguageServerInstallationStatus::Downloading,
             );
 
-            return Err(err);
+            zed::download_file(
+                &asset.download_url,
+                &binary_path,
+                zed::DownloadedFileType::Uncompressed,
+            )?;
+            zed::make_file_executable(&binary_path)?;
+
+            for entry in fs::read_dir(".").into_iter().flatten().flatten() {
+                let name = entry.file_name();
+                let name = name.to_string_lossy();
+                if name.starts_with(BINARY_NAME) && name != binary_path {
+                    fs::remove_file(entry.path()).ok();
+                }
+            }
         }
 
-        self.cached = true;
+        self.cached_binary_path = Some(binary_path.clone());
 
-        zed::set_language_server_installation_status(
-            language_server_id,
-            &zed::LanguageServerInstallationStatus::None,
-        );
-
-        Ok(())
+        Ok(binary_path)
     }
 }
 
@@ -74,39 +114,28 @@ impl zed::Extension for DockerComposeExtension {
 
     fn language_server_command(
         &mut self,
-        language_server_id: &zed::LanguageServerId,
-        _worktree: &zed::Worktree,
-    ) -> zed::Result<zed::Command> {
-        self.install_if_needed(language_server_id)?;
-
+        language_server_id: &LanguageServerId,
+        worktree: &zed::Worktree,
+    ) -> Result<zed::Command> {
         Ok(zed::Command {
-            command: zed::node_binary_path()?,
-            args: vec![self.server_path(), "--stdio".to_string()],
+            command: self.language_server_binary_path(language_server_id, worktree)?,
+            args: vec!["start".to_string(), "--stdio".to_string()],
             env: Default::default(),
         })
+    }
+
+    fn language_server_initialization_options(
+        &mut self,
+        _language_server_id: &LanguageServerId,
+        _worktree: &zed::Worktree,
+    ) -> Result<Option<serde_json::Value>> {
+        Ok(Some(serde_json::json!({
+            "telemetry": "off",
+            "dockercomposeExperimental": {
+                "composeSupport": true,
+            },
+        })))
     }
 }
 
 zed::register_extension!(DockerComposeExtension);
-
-/// Extensions to the Zed extension API that have not yet stabilized.
-mod zed_ext {
-    /// Sanitizes the given path to remove the leading `/` on Windows.
-    ///
-    /// On macOS and Linux this is a no-op.
-    ///
-    /// This is a workaround for https://github.com/bytecodealliance/wasmtime/issues/10415.
-    pub fn sanitize_windows_path(path: std::path::PathBuf) -> std::path::PathBuf {
-        use zed_extension_api::{current_platform, Os};
-
-        let (os, _arch) = current_platform();
-        match os {
-            Os::Mac | Os::Linux => path,
-            Os::Windows => path
-                .to_string_lossy()
-                .to_string()
-                .trim_start_matches('/')
-                .into(),
-        }
-    }
-}

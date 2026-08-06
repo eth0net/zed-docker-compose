@@ -1,14 +1,19 @@
 id = "docker-compose"
 name = "Docker Compose"
-version = "0.3.1"
+version = "0.4.0"
 schema_version = 1
 authors = ["eth0net <eth0net@pm.me>"]
 description = "Syntax highlighting for Docker Compose files"
 repository = "https://github.com/eth0net/zed-docker-compose"
 
-[language_servers.docker-compose]
-name = "Docker Compose"
+[language_servers.docker-language-server]
+name = "Docker Language Server"
 language = "Docker Compose"
+
+# The server keys its Compose support off the LSP language id, so Zed has to
+# send `dockercompose` rather than the language name.
+[language_servers.docker-language-server.language_ids]
+"Docker Compose" = "dockercompose"
 
 [grammars.yaml]
 repository = "https://github.com/zed-industries/tree-sitter-yaml"
