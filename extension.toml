@@ -1,9 +1,9 @@
 id = "docker-compose"
 name = "Docker Compose"
-version = "0.4.0"
+version = "0.4.1"
 schema_version = 1
 authors = ["eth0net <eth0net@pm.me>"]
-description = "Syntax highlighting for Docker Compose files"
+description = "Syntax highlighting and language server support for Docker Compose files, powered by the Docker Language Server"
 repository = "https://github.com/eth0net/zed-docker-compose"
 
 [language_servers.docker-language-server]
